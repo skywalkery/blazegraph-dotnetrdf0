@@ -2,7 +2,7 @@
 Blazegraph connector using dotNetRDF
 
 Usage:
-Download dll’s from the link and add to the project or include them by the NuGet.
+Download dll’s from the link (https://github.com/maginfo-team/dotNetRDF-blazegraph/blob/master/BlazegraphConnector.dll?raw=true) and add to the project or include them by the NuGet.
 Look at the https://bitbucket.org/dotnetrdf/dotnetrdf/wiki/User%20Guide dotNetRDF documentation.
 
 Examples of using Blazegraph connector:
