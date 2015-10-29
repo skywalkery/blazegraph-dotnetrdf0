@@ -19,8 +19,10 @@ namespace VDS.RDF.Storage
     /// <summary>
     /// Class for connecting to a Blazegraph Store
     /// </summary>
-    public class BlazegraphConnector : BaseAsyncHttpConnector, IAsyncQueryableStorage, IQueryableStorage, IConfigurationSerializable, IAsyncTransactionalStorage, ITransactionalStorage
+    public class BlazegraphConnector : BaseAsyncHttpConnector, IAsyncQueryableTimeoutStorage, IQueryableTimeoutStorage, IConfigurationSerializable, IAsyncTransactionalStorage, ITransactionalStorage
     {
+        private const string BlazeGraphQueryTimeoutHeader = "X-BIGDATA-MAX-QUERY-MILLIS";
+
         /// <summary>
         /// Constant for the default Blazegraph namespace
         /// </summary>
@@ -159,7 +161,7 @@ namespace VDS.RDF.Storage
             return request;
         }
 
-        #region IQueryableStorage
+        #region IQueryableTimeoutStorage
 
         /// <summary>
         /// Makes a SPARQL Query against the underlying Store using whatever reasoning mode is currently in-use
@@ -168,9 +170,32 @@ namespace VDS.RDF.Storage
         /// <returns></returns>
         public virtual object Query(String sparqlQuery)
         {
+            return this.Query(sparqlQuery, -1);
+        }
+
+        /// <summary>
+        /// Makes a SPARQL Query against the underlying Store using whatever reasoning mode is currently in-use processing the results using an appropriate handler from those provided
+        /// </summary>
+        /// <param name="rdfHandler">RDF Handler</param>
+        /// <param name="resultsHandler">Results Handler</param>
+        /// <param name="sparqlQuery">SPARQL Query</param>
+        /// <returns></returns>
+        public virtual void Query(IRdfHandler rdfHandler, ISparqlResultsHandler resultsHandler, string sparqlQuery)
+        {
+            this.Query(rdfHandler, resultsHandler, sparqlQuery, -1);
+        }
+
+        /// <summary>
+        /// Makes a SPARQL Query against the underlying Store using whatever reasoning mode is currently in-use
+        /// </summary>
+        /// <param name="sparqlQuery">Sparql Query</param>
+        /// <param name="timeoutMilliseconds">Query timeout in milliseconds</param>
+        /// <returns></returns>
+        public virtual object Query(string sparqlQuery, long timeoutMilliseconds)
+        {
             Graph g = new Graph();
             SparqlResultSet results = new SparqlResultSet();
-            this.Query(new GraphHandler(g), new ResultSetHandler(results), sparqlQuery);
+            this.Query(new GraphHandler(g), new ResultSetHandler(results), sparqlQuery, timeoutMilliseconds);
 
             if (results.ResultsType != SparqlResultsType.Unknown)
             {
@@ -188,8 +213,9 @@ namespace VDS.RDF.Storage
         /// <param name="rdfHandler">RDF Handler</param>
         /// <param name="resultsHandler">Results Handler</param>
         /// <param name="sparqlQuery">SPARQL Query</param>
+        /// <param name="timeoutMilliseconds">Query timeout in milliseconds</param>
         /// <returns></returns>
-        public virtual void Query(IRdfHandler rdfHandler, ISparqlResultsHandler resultsHandler, String sparqlQuery)
+        public virtual void Query(IRdfHandler rdfHandler, ISparqlResultsHandler resultsHandler, string sparqlQuery, long timeoutMilliseconds)
         {
             try
             {
@@ -203,10 +229,20 @@ namespace VDS.RDF.Storage
                     queryParams.Add("query", sparqlQuery);
 
                     request = this.CreateRequest("/sparql", accept, "GET", queryParams);
+
+                    if (timeoutMilliseconds != -1)
+                    {
+                        request.Headers[BlazeGraphQueryTimeoutHeader] = timeoutMilliseconds.ToString();
+                    }
                 }
                 else
                 {
                     request = this.CreateRequest("/sparql", accept, "POST", queryParams);
+
+                    if (timeoutMilliseconds != -1)
+                    {
+                        request.Headers[BlazeGraphQueryTimeoutHeader] = timeoutMilliseconds.ToString();
+                    }
 
                     //Build the Post Data and add to the Request Body
                     request.ContentType = MimeTypesHelper.Utf8WWWFormURLEncoded;
@@ -276,6 +312,31 @@ namespace VDS.RDF.Storage
         /// <param name="state">State to pass to the callback</param>
         public virtual void Query(IRdfHandler rdfHandler, ISparqlResultsHandler resultsHandler, string sparqlQuery, AsyncStorageCallback callback, object state)
         {
+            this.Query(rdfHandler, resultsHandler, sparqlQuery, callback, state, -1);
+        }
+
+        /// <summary>
+        /// Queries the store asynchronously
+        /// </summary>
+        /// <param name="sparqlQuery">SPARQL Query</param>
+        /// <param name="callback">Callback</param>
+        /// <param name="state">State to pass to the callback</param>
+        public virtual void Query(string sparqlQuery, AsyncStorageCallback callback, object state)
+        {
+            this.Query(sparqlQuery, callback, state, -1);
+        }
+
+        /// <summary>
+        /// Queries the store asynchronously
+        /// </summary>
+        /// <param name="sparqlQuery">SPARQL Query</param>
+        /// <param name="rdfHandler">RDF Handler</param>
+        /// <param name="resultsHandler">Results Handler</param>
+        /// <param name="callback">Callback</param>
+        /// <param name="state">State to pass to the callback</param>
+        /// <param name="timeoutMilliseconds">Query timeout in milliseconds</param>
+        public void Query(IRdfHandler rdfHandler, ISparqlResultsHandler resultsHandler, string sparqlQuery, AsyncStorageCallback callback, object state, long timeoutMilliseconds)
+        {
             try
             {
                 HttpWebRequest request;
@@ -283,6 +344,11 @@ namespace VDS.RDF.Storage
                 string accept = MimeTypesHelper.HttpRdfOrSparqlAcceptHeader;
                 Dictionary<string, string> queryParams = new Dictionary<string, string>();
                 request = this.CreateRequest("/sparql", accept, "POST", queryParams);
+
+                if (timeoutMilliseconds != -1)
+                {
+                    request.Headers[BlazeGraphQueryTimeoutHeader] = timeoutMilliseconds.ToString();
+                }
 
                 request.ContentType = MimeTypesHelper.Utf8WWWFormURLEncoded;
 
@@ -374,7 +440,8 @@ namespace VDS.RDF.Storage
         /// <param name="sparqlQuery">SPARQL Query</param>
         /// <param name="callback">Callback</param>
         /// <param name="state">State to pass to the callback</param>
-        public virtual void Query(string sparqlQuery, AsyncStorageCallback callback, object state)
+        /// <param name="timeoutMilliseconds">Query timeout in milliseconds</param>
+        public void Query(string sparqlQuery, AsyncStorageCallback callback, object state, long timeoutMilliseconds)
         {
             Graph g = new Graph();
             SparqlResultSet results = new SparqlResultSet();
@@ -388,7 +455,7 @@ namespace VDS.RDF.Storage
                 {
                     callback(this, new AsyncStorageCallbackArgs(AsyncStorageOperation.SparqlQuery, sparqlQuery, g, args.Error), state);
                 }
-            }, state);
+            }, state, timeoutMilliseconds);
         }
 
         #endregion
